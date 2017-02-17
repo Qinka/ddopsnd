@@ -1,218 +1,155 @@
 \begin{code}
 module Main where
 
-
-import Crypto.Hash.Algorithms
-import Crypto.PubKey.RSA
-import Crypto.PubKey.RSA.PSS
+import Data.Conduit
 import Data.Aeson
 import Data.Either
 import Data.Maybe
 import Data.Time
+import Text.Parsec
+import Yesod.Core
 
-
-import           Network.HTTP    ()
-import qualified Network.HTTP as HTTP
-import           Yesod.Core hiding ()
-import qualified Yesod.Core as YC
-
-
-import qualified Data.ByteString.Base64 as B64
-import qualified Data.HashMap           as HM
-import qualified Data.Text              as T
-import qualified Data.Text.Encoding     as T
-import qualified Data.ByteString        as B
+import qualified Data.HashMap       as HM
+import qualified Data.ByteString    as B
+import qualified Data.Text          as T
+import qualified Data.Text.Encoding as T
 \end{code}
+
+
+\begin{code}
+main = warp 3000 Ddopsnd
+\end{code}
+
 
 for yesod
 \begin{code}
 data Ddopsnd = Ddopsnd
-               { loginToken :: String
-               , publicDir  :: String
-               }
-             deriving (Eq,Show)
 
 mkYesod "Ddopsnd" [parseRoutes|
-  / UpdateR POST
+  /record RecordR POST
+  /ipaddr IpaddrR POST
   |]
 
-instance Yesod Ddopsnd where
-  isAuthorized _ _ = do
-    pubKey     <- getPubKey
-    checkHash  <- (B64.decode . T.encodeUtf8 .T.concat)         <$> lookupPostParams "sha-text"
-    checkTime  <- T.concat                                      <$> lookupPostParams "time"
-    checkDelta' <- (readD . T.concat) <$> lookupPostParams "delta"
-    let checkDelta = fromRational $ toRational checkDelta'
-    case (pubKey,checkHash,checkTime,checkDelta) of
-      (Nothing,_,_,_) -> return $ Unauthorized "Who are you? My frend!"
-      (_,Left _,_,_)  -> return $ Unauthorized "Who are you? My frien!"
-      (Just pk,Right ch,ct,cd)  -> do
-        let time = readT ct
-        isTime <- checkTimeLim time cd
-        if isTime
-          then do
-          isText <- checkText ct pk ch checkDelta'
-          if isText
-            then do
-            $logDebugS "Auth" "Auth one"
-            return Authorized
-            else do
-            liftIO $ threadDelay 60
-            return $ Unauthorized "Who are you? The thing did have answer...."
-          else do
-          liftIO $ threadDelay 60
-            return $ Unauthorized "Who are you? The thing did not answer...."
-          
-      where getPubKey = do
-              fileDir <- publicDir <$> getYesod
-              shaFilePath <- lookupPostParam "sha-file-name"
-              case shaFilePath of
-                Just sfp -> do
-                  pKey <- read <$> (liftIO $ readFile (fileDir ++ T.unpack sfp))
-                  return (Just pKey)
-                Nothing -> return Nothing
-            checkText :: T.Text -> PublicKey -> B.ByteString -> Double -> Handler Bool
-            checkText text pk hash dl = do
-              let test = T.encodeUtf8 text
-              return $ verify sha512pss pk (B.concat [test,showBSUtf8 dl]) hash
-            checkTimeLim :: UTCTime -> NominalDiffTime -> Handler Bool
-            checkTimeLim time cd = do
-              now <- liftIO getCurrentTime
-              if abs (diffUTCTime now time) < cd
-                then return True
-                else return False
-            readD = readT :: T.Text -> Double --} \_ -> 1000 :: Double
-            sha512pss = defaultPSSParams SHA512 :: PSSParams SHA512 B.ByteString B.ByteString
-
-
+instance Yesod Ddopsnd
 \end{code}
 
-
-
-
+to get record id
 \begin{code}
-postUpdateR :: Handler String
-postUpdateR = do
-  sub <- lookupPostParam "sub-domain"
-  dom <- lookupPostParam "domain"
-  val <- lookupPostParam "value"
-  case (sub,dom,val) of
-    (Nothing,_,_) -> invalidArgs ["rgs"]
-    (_,Nothing,_) -> invalidArgs ["ags"]
-    (_,_,Nothing) -> invalidArgs ["ars"]
-    (s,d,v) -> do
-      ri <- getRecordId s d
-      lT <- loginToken <$> getYesod
-      let paramStr = mkParam
-            [ "login_token" =: lT
-            , "format"      =: "json"
-            , "lang"        =: "cn"
-            , "domain"      =: d
-            , "record_id"   =: ri
-            , "sub_domain"  =: s
-            , "record_type" =: "A"
-            , "record_line" =: "默认"
-            , "value"       =: v
-            ]
-          request = HTTP.postRequestWithBody "https://dnsapi.cn/Record.Modify"
-                                             "application/x-www-form-urlencoded"
-                                             paramStr
-      simpleHTTP request >>= getResponseBody
-\end{code}
-
-\begin{code}
---auth :: Route Ddopsnd -> Bool -> Handler Bool
-auth _ _ = do
-  pubKey     <- getPubKey
-  checkHash  <- (B64.decode . T.encodeUtf8 .T.concat)         <$> lookupPostParams "sha-text"
-  checkTime  <- T.concat                                      <$> lookupPostParams "time"
-  checkDelta' <- (readD . T.concat) <$> lookupPostParams "delta"
-  let checkDelta = fromRational $ toRational checkDelta'
-  case (pubKey,checkHash,checkTime,checkDelta) of
-    (Nothing,_,_,_) -> return $ Unauthorized "Who are you? My frend!"
-    (_,Left _,_,_)  -> return $ Unauthorized "Who are you? My frien!"
-    (Just pk,Right ch,ct,cd)  -> do
-      let time = readT ct
-      isTime <- checkTimeLim time cd
-      if isTime
-        then do
-        isText <- checkText ct pk ch checkDelta'
-        if isText
-          then do
-          $logDebugS "Auth" "Auth one"
-          return Authorized
-          else do
-          liftIO $ threadDelay 60
-          return $ Unauthorized "Who are you? The thing did have answer...."
-        else do
-          liftIO $ threadDelay 60
-          return $ Unauthorized "Who are you? The thing did not answer...."
-        
-  where getPubKey = do
-          fileDir <- publicDir <$> getYesod
-          shaFilePath <- lookupPostParam "sha-file-name"
-          case shaFilePath of
-            Just sfp -> do
-              pKey <- read <$> (liftIO $ readFile (fileDir ++ T.unpack sfp))
-              return (Just pKey)
-            Nothing -> return Nothing
-        checkText :: T.Text -> PublicKey -> B.ByteString -> Double -> Handler Bool
-        checkText text pk hash dl = do
-          let test = T.encodeUtf8 text
-          return $ verify sha512pss pk (B.concat [test,showBSUtf8 dl]) hash
-        checkTimeLim :: UTCTime -> NominalDiffTime -> Handler Bool
-        checkTimeLim time cd = do
-          now <- liftIO getCurrentTime
-          if abs (diffUTCTime now time) < cd
-            then return True
-            else return False
-        readD = readT :: T.Text -> Double --} \_ -> 1000 :: Double
-        sha512pss = defaultPSSParams SHA512 :: PSSParams SHA512 B.ByteString B.ByteString
+postRecordR :: Handler T.Text
+postRecordR = do -- Handler
+  sub  <- lookupPostParam "sub-domain"
+  json <- getFile "context"
+  ver  <- toType <$> lookupPostParam "version"
+  return $ case getRecord sub ver json of
+    Nothing -> "notfound"
+    Just x  -> x
+  where toType (Just "4") = Just "A"
+        toType (Just "6") = Just "AAAA"
+        toType _          = Nothing
 \end{code}
 
 
 get the record id
 \begin{code}
-getRecord :: String -> Object -> Maybe String
-getRecord d o = do -- Maybe
-  Array vs <-  HM.lookup "records" o
-  let v = filter (\x -> lookup "name" x == Just (String $ T.pack d)) vs
-  x <- lookup "id" $ head v
-  case x of
-    String str -> return $ T.unpack str
-    _ -> Nothing
-getRecordId :: String -> String -> Handler String
-getRecordId subDomain domain = do --Handler
-  lT <- loginToken <$> getYesod
-  let paramStr = mkParam
-        [ "login_token" =: lT
-        , "format"      =: "json"
-        , "lang"        =: "cn"
-        , "domain"      =: domain
-        ]
-      request = HTTP.postRequestWithBody "https://dnsapi.cn/Record.List"
-                                         "application/x-www-form-urlencoded"
-                                         paramStr
-  rp <- simpleHTTP request >>= getResponseBody
-  case rp of
-    Right rp' -> do -- Handler
-      let id = do -- Maybe 
-            o <- decodeStrict rp'
-            getRecord subDomain o
-      case id of
-        Just i -> return i
-        _ -> notFound
-    Left e -> notFound
-  where mkParam :: [String] -> String
-        mkParam []     = ""
-        mkParam [x]    = x
-        mkParam (x:xs) = x ++ ('&': mkParamStep xs)
-        (=:) :: String -> String -> String
-        a =: b = a ++ ("=":b)
+type SubDomain  = T.Text
+type RecordId   = T.Text
+type RecordType = T.Text
+data Record = Record
+              { sub_domain  :: SubDomain
+              , record_id   :: RecordId
+              , record_type :: RecordType
+              }
+            deriving (Eq,Show)
+newtype Records = Records [Record]
+                deriving (Eq,Show)
+instance FromJSON Record where
+  parseJSON (Object v) = Record
+    <$> v .: "name"
+    <*> v .: "id"
+    <*> v .: "type"
+instance FromJSON Records where
+  parseJSON (Object v) = Records
+    <$> v .: "records"
+
+getRecord :: Maybe T.Text -> Maybe T.Text -> Maybe B.ByteString -> Maybe T.Text
+getRecord (Just sd) (Just typ) b = do -- Maybe
+  Records rs <- decodeStrict =<< b
+  let rc = filter (\r -> sub_domain r == sd && record_type r == typ) rs
+  record_id <$> listToMaybe rc
+getRecord _ _ _ = Nothing
+\end{code}
 
 
-simpleHTTP = liftIO . HTTP.simpleHTTP
-getResponseBody = liftIO . HTTP.getResponseBody
-readT = read. T.unpack
-showBSUtf8 = show . T.unpack . T.decodeUtf8
+
+to get ip addr
+\begin{code}
+postIpaddrR :: Handler String
+postIpaddrR = do -- Handler
+  txt <- getFile "context"
+  ver <- lookupPostParam "version"
+  return $ getIP txt ver
+  where getIP (Just txt) (Just "4") =
+          case ipv4s $ parsing txt of
+            [] -> "notfound"
+            rs -> unwords $ "4":rs
+        getIP (Just txt) (Just "6") = 
+          case ipv6s $ parsing txt of
+            [] -> "notfound"
+            rs -> unwords $ "6":rs
+        getIP _ _ = "notfound"
+        
+  
+  
+\end{code}
+
+\begin{code}
+data IP = IPv4    String
+        | IPv6    String
+        | IPvNull String
+        deriving (Eq,Show)
+ipv4s, ipv6s :: [Either ParseError IP] -> [String]
+ipv4s [] = []
+ipv4s (Right (IPv4 x):xs) = x : ipv4s xs
+ipv4s (_:xs) = ipv4s xs
+ipv6s [] = []
+ipv6s (Right (IPv6 x):xs) = x : ipv6s xs
+ipv6s (_:xs) = ipv6s xs
+type Parser = Parsec T.Text ()
+parsingIpx :: String -> Parser Char -> Parser String
+parsingIpx i select = do
+  spaces
+  string i
+  skipMany space
+  optional $ string "addr"
+  spaces
+  optional $ string ":"
+  spaces
+  rs <- many1 select
+  skipMany (noneOf "\n\r")
+  return rs
+parsingIpv4, parsingIpv6, parsingIpvNull :: Parser IP
+parsingIpv4 = let select = oneOf "0123456789."              in IPv4 <$> parsingIpx "inet"  select
+parsingIpv6 = let select = oneOf "0123456789:aAbBcCdDeEfF"  in IPv6 <$> parsingIpx "inet6" select
+parsingIpvNull = do
+  IPvNull <$> many (noneOf "\n\r")
+parsingIP :: Parser IP
+parsingIP = try parsingIpv6 <|> try parsingIpv4 <|> parsingIpvNull
+parsing :: B.ByteString -> [Either ParseError IP]
+parsing bs = run <$> ts
+  where ts = T.lines $ T.decodeUtf8 bs
+        run = runParser parsingIP () "context"
+\end{code}
+
+
+\begin{code}
+getFile :: T.Text -> Handler (Maybe B.ByteString)
+getFile fn = do
+  file <- lookupFile fn
+  case file of
+    Just fd -> Just . B.concat <$> sourceToList (fileSource fd)
+    Nothing -> do
+      field <- lookupPostParam fn
+      case field of
+        Just fd -> return $ Just $  T.encodeUtf8 fd
+        Nothing -> return Nothing
 \end{code}
