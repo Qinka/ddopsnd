@@ -93,7 +93,7 @@ if [ -z "$DDOPSNDD" ]; then
 fi
 echo DDOPSNDD $DDOPSNDD
 ### check ttl
-if [ -z "$TTL" ]; then
+if [ -z "$TTL"  ]; then
     TTL=10
 fi
 echo TTL $TTL
