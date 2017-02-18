@@ -93,10 +93,16 @@ if [ -z "$DDOPSNDD" ]; then
 fi
 echo DDOPSNDD $DDOPSNDD
 ### check ttl
-if [ -z "$TTL" ]; then
+if [ -z "$TTL"  ]; then
     TTL=10
 fi
 echo TTL $TTL
+### check cache
+if [ -z "$CACHE"  ]; then
+    echo need cache file
+    exit 6;
+fi
+echo CACHE $CACHE
 ##  generate
 ### generate record_id
 RECORD_CURL=`curl -X POST https://dnsapi.cn/Record.List -F "login_token=$LOGIN_TOKEN" -F "format=$FORMAT" -F "lang=$REQLANG" -F "domain=$DOMAIN"`
@@ -117,6 +123,16 @@ VALUE=`curl -X POST $DDOPSNDD/ipaddr -F "context=$VALUE_IFC" -F "version=$IP" | 
 echo VALUE $VALUE
 
 ## send request
+### check cache
+CACHE_VAL=`cat $CACHE`
+if [ "$CACHE" = "$RECODE_ID,$RECORD_TYPE,$DOMAIN,$SUB_DOMAIN,$VALUE" ]; then
+    echo get cache
+    echo will not update
+    exit 0;
+fi
+### write to cache
+echo $RECODE_ID,$RECORD_TYPE,$DOMAIN,$SUB_DOMAIN,$VALUE > $CACHE
+### send
 RT=`curl -X POST https://dnsapi.cn/Record.Modify -F "login_token=$LOGIN_TOKEN" \
 	    	 				 -F "format=$FORMAT" \
 						 -F "domain=$DOMAIN" \
