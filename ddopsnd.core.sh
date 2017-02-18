@@ -98,11 +98,11 @@ if [ -z "$TTL" ]; then
 fi
 echo TTL $TTL
 ##  generate
-### generate record_id
-RECORD_CURL=`curl -X POST https://dnsapi.cn/Record.List -F "login_token=$LOGIN_TOKEN" -F "format=$FORMAT" -F "lang=$REQLANG" -F "domain=$DOMAIN"`
-echo RECORD_CURL $RECORD_CURL
-RECORD_ID=`curl -X POST $DDOPSNDD/record -F "sub-domain=$SUB_DOMAIN" -F "context=$RECORD_CURL" -F "version=$IP"`
-echo RECORD_ID $RECORD_ID
+### generate value
+VALUE_IFC=`ifconfig $INTERFACE | grep inet`
+echo VALUE_IFC $VALUE_IFC
+VALUE=`curl -X POST $DDOPSNDD/ipaddr -F "context=$VALUE_IFC" -F "version=$IP" | awk '{print $2}'`
+echo VALUE $VALUE
 ### generate record type
 if [ "$IP" = "4" ];then
     RECORD_TYPE="A"
@@ -110,13 +110,21 @@ else
     RECORD_TYPE="AAAA"
 fi
 echo RECORD_TYPE $RECORD_TYPE
-### generate value
-VALUE_IFC=`ifconfig $INTERFACE | grep inet`
-echo VALUE_IFC $VALUE_IFC
-VALUE=`curl -X POST $DDOPSNDD/ipaddr -F "context=$VALUE_IFC" -F "version=$IP" | awk '{print $2}'`
-echo VALUE $VALUE
-
+### generate record_id
+RECORD_CURL=`curl -X POST https://dnsapi.cn/Record.List -F "login_token=$LOGIN_TOKEN" -F "format=$FORMAT" -F "lang=$REQLANG" -F "domain=$DOMAIN"`
+echo RECORD_CURL $RECORD_CURL
+RECORD_STR=`curl -X POST $DDOPSNDD/record -F "sub-domain=$SUB_DOMAIN" -F "context=$RECORD_CURL" -F "version=$IP"`
+echo RECORD_STR $RECORD_STR
+RECORD_ID=`echo $RECORD_STR | awk '{print $1}'`
+echo RECORD_ID $RECORD_ID
+CACHE_VALUE=`echo $RECORD_STR | awk '{print $2}'`
+echo CACHE_VALUE $CACHE_VALUE
 ## send request
+if [ "$CACHE_VALUE" = "$VALUE" ]; then
+    echo same value
+    echo would not update
+    exit 0;
+fi
 RT=`curl -X POST https://dnsapi.cn/Record.Modify -F "login_token=$LOGIN_TOKEN" \
 	    	 				 -F "format=$FORMAT" \
 						 -F "domain=$DOMAIN" \

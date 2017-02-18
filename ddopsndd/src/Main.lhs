@@ -42,7 +42,7 @@ postRecordR = do -- Handler
   ver  <- toType <$> lookupPostParam "version"
   return $ case getRecord sub ver json of
     Nothing -> "notfound"
-    Just x  -> x
+    Just x  -> T.unwords x
   where toType (Just "4") = Just "A"
         toType (Just "6") = Just "AAAA"
         toType _          = Nothing
@@ -58,6 +58,7 @@ data Record = Record
               { sub_domain  :: SubDomain
               , record_id   :: RecordId
               , record_type :: RecordType
+              , item_value  :: T.Text
               }
             deriving (Eq,Show)
 newtype Records = Records [Record]
@@ -67,15 +68,17 @@ instance FromJSON Record where
     <$> v .: "name"
     <*> v .: "id"
     <*> v .: "type"
+    <*> v .: "value"
 instance FromJSON Records where
   parseJSON (Object v) = Records
     <$> v .: "records"
 
-getRecord :: Maybe T.Text -> Maybe T.Text -> Maybe B.ByteString -> Maybe T.Text
+getRecord :: Maybe T.Text -> Maybe T.Text -> Maybe B.ByteString -> Maybe [T.Text]
 getRecord (Just sd) (Just typ) b = do -- Maybe
   Records rs <- decodeStrict =<< b
   let rc = filter (\r -> sub_domain r == sd && record_type r == typ) rs
-  record_id <$> listToMaybe rc
+      gets Record{..} = [record_id,item_value]
+  gets <$> listToMaybe rc
 getRecord _ _ _ = Nothing
 \end{code}
 
