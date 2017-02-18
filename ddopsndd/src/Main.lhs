@@ -9,15 +9,34 @@ import Data.Time
 import Text.Parsec
 import Yesod.Core
 
+import System.Console.CmdArgs
+import System.Environment
+
 import qualified Data.HashMap       as HM
 import qualified Data.ByteString    as B
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
 \end{code}
 
+\begin{code}
+data Config = Config
+              { port :: Int
+              }
+            deriving (Eq,Show,Data,Typeable)
+config :: Config
+config = Config
+  { port = 3000
+    &= typ "PORT"
+    &= help "The port of this application, default: 3000"
+    &= name "port"
+    &= name "p"
+  }
+\end{code}
 
 \begin{code}
-main = warp 3000 Ddopsnd
+main = do
+  Config{..} <- cmdArgs config
+  warp port Ddopsnd
 \end{code}
 
 
