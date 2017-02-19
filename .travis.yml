@@ -26,5 +26,5 @@ before_install:
 script:
   - source $TRAVIS_BUILD_DIR/integration/build.sh
 
-after_sucess:
+after_success:
   - source $TRAVIS_BUILD_DIR/integration/update.sh
