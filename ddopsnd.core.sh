@@ -9,11 +9,15 @@ if [ $# -lt 3 ]; then
     echo "e.g.: $0 eth0 4 /etc/ddopsnd/cfg"
     echo "      $0 eth0 6 /etc/ddopsnd/cfg"
     exit 1;
+elif [ $# -lt 4 ]; then
+    K=2
+else
+    K=$4
 fi
 
 
 # functions
-function help
+help()
 {
     echo "USAGE: $0 interface 4/6 config.file"
     echo "e.g.: $0 eth0 4 /etc/ddopsnd/cfg"
@@ -101,7 +105,7 @@ echo TTL $TTL
 ### generate value
 VALUE_IFC=`ifconfig $INTERFACE | grep inet`
 echo VALUE_IFC $VALUE_IFC
-VALUE=`curl -X POST $DDOPSNDD/ipaddr -F "context=$VALUE_IFC" -F "version=$IP" | awk '{print $2}'`
+VALUE=`curl -X POST $DDOPSNDD/ipaddr -F "context=$VALUE_IFC" -F "version=$IP" | awk '{print $"'$K'"}'`
 echo VALUE $VALUE
 ### generate record type
 if [ "$IP" = "4" ];then
